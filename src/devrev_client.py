@@ -4,6 +4,10 @@ from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from models import UserGroup
 from config import Config
+from core.circuit_breaker import CircuitBreaker
+from core.cache import Cache
+from core.validation import DataValidator
+from metrics.prometheus import PrometheusMetrics
 
 class DevRevAPIError(Exception):
     """Base exception for DevRev API errors"""
@@ -21,16 +25,52 @@ class AuthenticationError(DevRevAPIError):
     pass
 
 class DevRevClient:
-    """Client for interacting with the DevRev API"""
-    
     def __init__(self, config: Config):
         self.config = config
-        self.logger = logging.getLogger(__name__)
-        self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': f'Bearer {config.devrev_api_token}',
-            'Content-Type': 'application/json'
-        })
+        self.cache = Cache(ttl=3600)
+        self.validator = DataValidator()
+        self.metrics = PrometheusMetrics()
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            reset_timeout=60
+        )
+
+    @CircuitBreaker()
+    def get_groups(self) -> List[Dict[str, Any]]:
+        """Fetch all static groups"""
+        try:
+            with self.metrics.api_latency.labels(endpoint='groups.list').time():
+                self.metrics.record_api_request('groups.list')
+                response = self._make_request(
+                    'GET',
+                    'groups.list',
+                    params={
+                        'group_type': 'static',
+                        'member_type': 'dev_user'
+                    }
+                )
+                return response.get('groups', [])
+        except DevRevAPIError as e:
+            self.logger.error(f"Failed to fetch groups: {str(e)}")
+            raise
+    
+    def get_user_groups(self, user_ids: List[str]) -> List[UserGroup]:
+        # Check cache first
+        cache_key = f"user_groups_{','.join(sorted(user_ids))}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
+        # Fetch from API
+        with self.metrics.api_latency.labels(endpoint='users.list').time():
+            self.metrics.record_api_request('users.list')
+            try:
+                groups = super().get_user_groups(user_ids)
+                self.cache.set(cache_key, groups)
+                return groups
+            except Exception as e:
+                self.metrics.record_api_error('users.list', type(e).__name__)
+                raise
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> dict:
         """Make a request to the DevRev API with error handling"""
@@ -61,41 +101,7 @@ class DevRevClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(RateLimitError)
     )
-    def get_user_groups(self, user_ids: List[str]) -> List[UserGroup]:
-        """Fetch group memberships for given users from DevRev API"""
-        if not user_ids:
-            return []
-            
-        self.logger.info(f"Fetching group information for {len(user_ids)} users")
-        
-        try:
-            # DevRev API endpoint for fetching user information
-            response = self._make_request(
-                'POST',
-                'users.list',
-                json={'ids': user_ids}
-            )
-            
-            user_groups = []
-            for user in response.get('users', []):
-                # Get the primary group for the user
-                group_refs = user.get('group_refs', [])
-                if group_refs:
-                    user_groups.append(UserGroup(
-                        user_id=user['id'],
-                        group_id=group_refs[0],  # Using first group as primary
-                        group_name=None  # Can be populated if needed
-                    ))
-                else:
-                    self.logger.warning(f"No group found for user {user['id']}")
-            
-            self.logger.info(f"Successfully fetched groups for {len(user_groups)} users")
-            return user_groups
-            
-        except DevRevAPIError as e:
-            self.logger.error(f"Error fetching user groups: {str(e)}")
-            raise
-
+    
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
