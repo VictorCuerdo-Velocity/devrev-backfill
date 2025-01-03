@@ -27,17 +27,17 @@ class BackfillProcessor:
         self.dry_run = dry_run
         self.logger = logger or ContextLogger(__name__)
         
-        # Initialize components
+    
         self.metrics = MetricsCollector()
         self.health_checker = ServiceHealth(config, self.logger)
         self.data_validator = DataValidator()
         self.integrity_checker = DataIntegrityChecker(self.logger)
         self.dry_run_processor = DryRunProcessor(self.logger)
         
-        # Initialize clients
+       
         self.devrev_client = DevRevClient(config)
         
-        # Initialize processors
+        
         self.batch_processor = BatchProcessor(
             batch_size=config.batch_size,
             max_consecutive_failures=config.max_batch_failures,
@@ -48,7 +48,7 @@ class BackfillProcessor:
         """Initialize and check health of all components"""
         self.logger.info("Starting initialization and health checks")
         
-        # Check system health
+       
         health_status = self.health_checker.check_all()
         if not health_status["overall"]:
             self.logger.error("Health checks failed", status=health_status)
@@ -81,7 +81,7 @@ class BackfillProcessor:
                         progress.update("failed")
                         self.metrics.record_issue_processed(False)
 
-            # Final integrity check
+        
             if not self.dry_run:
                 integrity_result = self.integrity_checker.verify_updates(
                     issues,
@@ -166,9 +166,7 @@ class BackfillProcessor:
 
     def _fetch_updated_issues(self, original_issues: List[Issue]) -> List[Issue]:
         """Fetch the updated issues to verify changes"""
-        # This would typically involve querying the DevRev API or database
-        # to get the current state of the issues
-        # For now, we'll just return the original issues
+
         return original_issues
 
 def main():
@@ -185,39 +183,39 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Load and validate configuration
+    
         config = Config()
         config.batch_size = args.batch_size
         config.validate()
 
-        # Setup logging
+    
         logger = ContextLogger("backfill")
         logger.logger.setLevel(getattr(logging, args.log_level))
 
-        # Initialize processor
+        
         processor = BackfillProcessor(
             config=config,
             dry_run=args.dry_run,
             logger=logger
         )
 
-        # Initialize system
+    
         if not processor.initialize():
             logger.error("System initialization failed")
             return 1
 
-        # Initialize data source
+    
         if args.source == 'csv':
             data_source = CSVDataSource(config)
         else:
             data_source = SnowflakeDataSource(config)
 
-        # Test data source connection
+    
         if not data_source.test_connection():
             logger.error(f"Failed to connect to {args.source} data source")
             return 1
 
-        # Get issues needing updates
+    
         logger.info("Fetching issues with missing creator group...")
         issues = data_source.get_issues_missing_creator_group()
         logger.info(f"Found {len(issues)} issues to process")
@@ -226,13 +224,13 @@ def main():
             logger.info("No issues found needing updates")
             return 0
 
-        # Process issues
+        
         if args.dry_run:
             logger.info("Running in DRY RUN mode - no actual updates will be made")
 
         result = processor.process_issues(issues)
 
-        # Log final results
+    
         logger.info("Processing completed!", result=str(result))
         
         if args.dry_run:

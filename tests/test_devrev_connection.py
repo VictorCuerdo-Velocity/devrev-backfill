@@ -8,10 +8,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 import requests
 
-# Add the src directory to Python path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Setup logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -41,10 +40,10 @@ def test_endpoint(url: str, method: str, headers: dict, json_data: dict = None) 
         
         response.raise_for_status()
         
-        # Calculate request duration
+    
         duration = (datetime.now() - start_time).total_seconds()
         
-        # Extract rate limits
+    
         rate_limits = {
             'limit': response.headers.get('x-ratelimit-limit'),
             'remaining': response.headers.get('x-ratelimit-remaining'),
@@ -74,7 +73,7 @@ def test_devrev_connection():
         logger.error("❌ DEVREV_API_TOKEN not found in environment variables")
         return False
 
-    # Analyze token
+
     logger.info("\n=== Token Analysis ===")
     token_info = decode_jwt(api_token)
     if token_info:
@@ -94,7 +93,7 @@ def test_devrev_connection():
         else:
             logger.info(f"✅ Token is valid for {(exp_date - now).days} more days")
 
-    # Common headers
+   
     headers = {
         'Authorization': f'Bearer {api_token}',
         'Content-Type': 'application/json',
@@ -105,7 +104,7 @@ def test_devrev_connection():
     total_duration = 0
     logger.info("\n=== Initial Setup ===")
     
-    # Get first work item ID for timeline testing
+
     works_url = f"{base_url}works.list"
     logger.info(f"Fetching work item for timeline testing: {works_url}")
     success, response, limits, duration = test_endpoint(
@@ -125,7 +124,7 @@ def test_devrev_connection():
         logger.error("❌ Could not get work ID for timeline testing")
         return False
 
-    # Test suite
+
     logger.info("\n=== Testing API Endpoints ===")
 
     test_endpoints = [
@@ -204,8 +203,7 @@ def test_devrev_connection():
                 rate_limits = current_limits
         else:
             logger.error(f"❌ {test['name']} endpoint failed")
-        
-    # Summary
+
     logger.info("\n=== Connection Summary ===")
     logger.info(f"✅ Environment: {environment}")
     logger.info(f"✅ Base URL: {base_url}")
@@ -216,14 +214,14 @@ def test_devrev_connection():
     else:
         logger.error("❌ Some API endpoints failed")
 
-    # Performance Summary
+
     logger.info("\n=== Performance Summary ===")
     logger.info(f"Total test duration: {total_duration:.2f}s")
     logger.info("Individual endpoint performance:")
     for result in test_results:
         logger.info(f"  • {result['name']}: {result['duration']:.2f}s")
     
-    # Rate Limits
+
     logger.info("\n=== Rate Limits ===")
     logger.info(f"Rate Limit: {rate_limits['limit']}")
     logger.info(f"Remaining: {rate_limits['remaining']}")
