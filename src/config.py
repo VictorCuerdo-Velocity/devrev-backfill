@@ -1,4 +1,3 @@
-# src/config.py
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -14,7 +13,7 @@ class Config:
     devrev_base_url: str = os.getenv('DEVREV_BASE_URL', 'https://app.devrev.ai/api/gateway/internal/')
     environment: str = os.getenv('ENVIRONMENT', 'production')
     
-    # Snowflake Configuration (optional)
+    # Snowflake Configuration
     snowflake_account: Optional[str] = os.getenv('SNOWFLAKE_ACCOUNT', '')
     snowflake_user: Optional[str] = os.getenv('SNOWFLAKE_USER', '')
     snowflake_password: Optional[str] = os.getenv('SNOWFLAKE_PASSWORD', '')
@@ -26,7 +25,7 @@ class Config:
     csv_input_path: Optional[str] = os.getenv('CSV_INPUT_PATH', 'input_data.csv')
     
     # Processing Configuration
-    batch_size: int = int(os.getenv('BATCH_SIZE', '100'))
+    batch_size: int = int(os.getenv('BATCH_SIZE', '1000'))
     
     def validate(self) -> bool:
         """Validate required configuration"""

@@ -1,4 +1,3 @@
-# src/devrev_client.py
 import logging
 import requests
 from typing import List, Dict, Optional
