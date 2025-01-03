@@ -1,7 +1,9 @@
-from typing import Dict, Any
 import aiohttp
 import asyncio
 from datetime import datetime
+from typing import Dict, Any, Optional
+from config import Config
+from core.logging import ContextLogger
 
 class HealthChecker:
     def __init__(self, config: Config, logger: Optional[ContextLogger] = None):
