@@ -1,17 +1,21 @@
 # DevRev Creator Group Backfill
 
-This project automates the process of backfilling missing creator group information in DevRev issues. It features robust error handling, monitoring, and supports multiple data sources.
+This project automates the process of backfilling missing creator group information in DevRev issues, featuring robust error handling, monitoring, and multiple data sources support.
 
 ## Features
 
 - Multiple data source support (CSV, Snowflake)
 - Batch processing with configurable sizes
-- Robust error handling and retry mechanisms
+- Comprehensive error handling and retry mechanisms
 - Real-time progress tracking and monitoring
 - Dry run mode for testing
 - Data validation and integrity checks
-- Performance optimizations
 - Health monitoring and metrics collection
+- AsyncIO for improved performance
+- Checkpoint system for resumable operations
+- Automatic rate limiting and circuit breakers
+- Alerting system (Email/Slack)
+- System diagnostics and profiling
 - Structured JSON logging
 - Prometheus metrics integration
 
@@ -29,7 +33,10 @@ devrev-backfill/
 │   │   ├── validation.py  # Data validation
 │   │   ├── caching.py     # Caching mechanisms
 │   │   ├── retry.py       # Retry logic
-│   │   └── health.py      # Health checks
+│   │   ├── circuit_breaker.py # Circuit breaker implementation
+│   │   ├── rate_limiter.py    # Rate limiting logic
+│   │   ├── bulk_processor.py  # Bulk processing with backpressure
+│   │   └── checkpoint.py      # Checkpointing system
 │   ├── processing/        # Processing logic
 │   │   ├── batch.py       # Batch processing
 │   │   ├── progress.py    # Progress tracking
@@ -37,7 +44,11 @@ devrev-backfill/
 │   │   └── dry_run.py     # Dry run functionality
 │   ├── monitoring/        # Monitoring components
 │   │   ├── metrics.py     # Metrics collection
+│   │   ├── alerting.py    # Alert system
 │   │   └── health_check.py# Health monitoring
+│   ├── utils/             # Utility functions
+│   │   ├── profiler.py    # Performance profiling
+│   │   └── diagnostics.py # System diagnostics
 │   ├── data_source.py     # Data source implementations
 │   ├── devrev_client.py   # DevRev API client
 │   └── main.py           # Main execution script
@@ -45,42 +56,66 @@ devrev-backfill/
 │   ├── test_core/        # Core functionality tests
 │   ├── test_processing/  # Processing tests
 │   └── test_monitoring/  # Monitoring tests
-└── sample_data/          # Sample data files
+├── logs/                 # Log files directory
+├── checkpoints/          # Checkpoint files
+└── test_data/           # Test and sample data
 ```
 
 ## Prerequisites
 
-- Python 3.9 or higher
+- Python 3.9+
 - Virtual environment tool (venv)
-- Access to DevRev API
+- DevRev API access
 - (Optional) Snowflake access
 
-## Installation
+## Quick Start
 
-1. Clone the repository:
+1. Clone and setup:
 ```bash
 git clone <repository-url>
 cd devrev-backfill
-```
-
-2. Create and activate virtual environment:
-```bash
 python3 -m venv venv
-source venv/bin/activate  # On Unix/macOS
-# or
-.\venv\Scripts\activate  # On Windows
+source venv/bin/activate  # Unix/macOS
+# or .\venv\Scripts\activate  # Windows
+pip install -r requirements.txt
 ```
 
-3. Install required packages:
+2. Configure environment:
 ```bash
-pip install -r requirements.txt
+# Copy sample .env
+cp .env.sample .env
+# Edit with your values
+nano .env
+```
+
+3. Test your CSV:
+```bash
+# Create test directory
+mkdir -p test_data
+# Copy your CSV
+cp your_file.csv test_data/input.csv
+# Validate format
+python src/tools/validate_csv.py test_data/input.csv
+```
+
+4. Safe testing process:
+```bash
+# Full dry run first
+python src/main.py --csv test_data/input.csv --dry-run --log-level DEBUG
+
+# Test small batch
+python src/main.py --csv test_data/input.csv --batch-size 5 --dry-run
+
+# Process sample in production
+head -n 10 test_data/input.csv > test_data/sample.csv
+python src/main.py --csv test_data/sample.csv --batch-size 5
 ```
 
 ## Configuration
 
-1. Create a `.env` file in the root directory:
+`.env` file structure:
 ```env
-# DevRev Configuration
+# Required DevRev Configuration
 ENVIRONMENT=production
 DEVREV_API_TOKEN=your_token_here
 DEVREV_BASE_URL=https://app.devrev.ai/api/gateway/internal/
@@ -98,124 +133,160 @@ BATCH_SIZE=100
 MAX_RETRIES=3
 RETRY_BACKOFF=2
 MAX_BATCH_FAILURES=5
+CACHE_TTL=3600
+RATE_LIMIT_CALLS=50
+RATE_LIMIT_PERIOD=10
+
+# Alerting Configuration
+ALERT_EMAIL=your_email
+SMTP_HOST=smtp.your-company.com
+SLACK_WEBHOOK=your_webhook_url
 ```
 
-## Usage
+## Command Line Options
 
-### Command Line Arguments
-
-- `--source`: Choose data source ('csv' or 'snowflake', default: 'csv')
-- `--batch-size`: Number of issues to process in each batch (default: 100)
-- `--dry-run`: Run without making actual updates
-- `--log-level`: Set logging level (DEBUG/INFO/WARNING/ERROR, default: INFO)
-
-### Running the Script
-
-1. Basic usage (CSV source):
 ```bash
-python src/main.py
+python src/main.py [OPTIONS]
+
+Options:
+  --csv PATH               Path to input CSV file
+  --source TEXT           Data source (csv/snowflake) [default: csv]
+  --batch-size INTEGER    Batch size [default: 100]
+  --dry-run              Run without making changes
+  --resume               Resume from last checkpoint
+  --log-level TEXT       Logging level [default: INFO]
+  --validate-only        Only validate input data
+  --profile              Enable performance profiling
+  --monitor              Enable system monitoring
+  --help                 Show this message and exit
 ```
 
-2. Using Snowflake as data source:
+## CSV Format Requirements
+
+Required format:
+```csv
+issue_id,creator_user_id,assigned_group,creator_group
+ISSUE-1,USER-1,GROUP-A,
+ISSUE-2,USER-2,GROUP-B,
+```
+
+Validation rules:
+- issue_id: Required, string
+- creator_user_id: Required, string
+- assigned_group: Required, string
+- creator_group: Optional, string (empty for updates)
+
+## Monitoring & Alerts
+
+1. Real-time metrics:
 ```bash
-python src/main.py --source snowflake
+# View current metrics
+python src/tools/metrics.py
+
+# Watch processing
+python src/tools/monitor.py
 ```
 
-3. Dry run mode with custom batch size:
+2. Available metrics:
+- Processing progress/rates
+- API usage and limits
+- Error rates and types
+- System resource usage
+- Processing durations
+
+3. Health checks:
 ```bash
-python src/main.py --dry-run --batch-size 50
+# Check system health
+python src/tools/health_check.py
+
+# Test API connection
+python src/tools/test_connection.py
 ```
 
-4. Debug level logging:
+4. Alerts configuration:
+```python
+# config.py
+ALERT_THRESHOLDS = {
+    'error_rate': 0.1,     # Alert if >10% errors
+    'processing_time': 60,  # Alert if batch takes >60s
+    'api_errors': 5        # Alert after 5 API errors
+}
+```
+
+## Error Recovery
+
+If processing fails:
+
+1. Check logs:
 ```bash
-python src/main.py --log-level DEBUG
+tail -f logs/processing.log
 ```
 
-## Monitoring
-
-### Metrics
-The application collects various metrics:
-- Processing progress and success rates
-- API call statistics
-- Processing duration
-- Batch processing metrics
-
-### Health Checks
-Monitors the health of:
-- DevRev API connection
-- Data source connectivity
-- Rate limits
-- System resources
-
-### Logging
-- JSON-formatted structured logs
-- Separate log files for different components
-- Configurable log levels
-- Context-aware logging with metadata
-
-## Error Handling
-
-The script handles various error scenarios:
-- Network connectivity issues
-- API rate limiting
-- Authentication failures
-- Data validation errors
-- Processing failures
-- Database connection issues
-
-## Data Validation
-
-Validates:
-- Input data format and required fields
-- User and group associations
-- Update results integrity
-- Data consistency
-
-## Testing
-
-1. Run all tests:
+2. Review checkpoint:
 ```bash
-python -m pytest tests/
+python src/tools/show_checkpoint.py
 ```
 
-2. Run specific test suites:
+3. Resume processing:
 ```bash
-python -m pytest tests/test_core/
-python -m pytest tests/test_processing/
-python -m pytest tests/test_monitoring/
+python src/main.py --csv input.csv --resume
 ```
-
-## Development
-
-To contribute:
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes with tests
-4. Run the full test suite
-5. Submit a pull request
-
-## Best Practices
-
-1. Always use `--dry-run` first
-2. Start with small batch sizes
-3. Monitor logs during execution
-4. Backup data before updates
-5. Use virtual environment
-6. Regularly check health metrics
 
 ## Troubleshooting
 
-1. Check logs for detailed error messages
-2. Verify configuration in .env
-3. Test connectivity to all services
-4. Monitor system resources
-5. Check rate limits
+Common issues and solutions:
+
+1. API Rate Limits:
+- Reduce batch size
+- Increase rate limit period
+- Check current limits:
+```bash
+python src/tools/check_limits.py
+```
+
+2. Data Validation:
+- Validate CSV format
+- Check group mappings:
+```bash
+python src/tools/validate_groups.py
+```
+
+3. Performance Issues:
+- Run profiler:
+```bash
+python src/main.py --profile
+```
+- Check system resources:
+```bash
+python src/tools/diagnostics.py
+```
+
+## Best Practices
+
+1. Testing:
+- Always run with --dry-run first
+- Test with small batches initially
+- Validate data before processing
+- Monitor logs during execution
+
+2. Production:
+- Use checkpoints for large datasets
+- Monitor system resources
+- Keep data backups
+- Set up alerts
+
+3. Recovery:
+- Use --resume for interruptions
+- Check logs for errors
+- Validate results after completion
 
 ## Support
 
-For issues or questions:
-1. Check the logs
-2. Review error messages
-3. Verify configuration
-4. Check system health
-5. Open an issue in the repository
+For issues:
+1. Check logs in `logs/`
+2. Run health checks
+3. Review error messages
+4. Open GitHub issue with:
+   - Error logs
+   - Configuration (sanitized)
+   - Steps to reproduce
