@@ -1,0 +1,29 @@
+To test the data sources:
+
+For CSV testing:
+
+bashCopy# Create a sample CSV file
+mkdir -p sample_data
+touch sample_data/test_issues.csv
+
+# Add some test data to the CSV file
+echo "issue_id,creator_user_id,assigned_group,creator_group" > sample_data/test_issues.csv
+echo "ISSUE-1,USER-1,GROUP-A," >> sample_data/test_issues.csv
+echo "ISSUE-2,USER-2,GROUP-B,GROUP-C" >> sample_data/test_issues.csv
+
+# Run the test script
+python -m pytest tests/test_data_source.py -v
+
+# Run the manual test script
+python tests/test_data_source.py
+
+
+For JSON testing:
+
+bashCopy# Create a sample JSON file
+mkdir -p sample_data
+touch sample_data/test_issues.json
+
+
+
+
